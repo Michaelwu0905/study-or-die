@@ -3,29 +3,45 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"math/rand"
 	"os"
 	"strings"
 	"time"
 )
 
 // 读取角色的ascii艺术
-func readCharacter() (string, error) {
+func readCharacters() ([]string, error) {
 	file, err := os.Open("character.txt") // 打开ascii角色配置文件
 	if err != nil {                       // 错误检测
-		return "", err
+		return nil, err
 	}
 	defer file.Close() // 函数结束时关闭文件
 
+	var characters []string
 	var character string
 	scanner := bufio.NewScanner(file) // scanner 可以逐行读取数据
 	for scanner.Scan() {
-		character += scanner.Text() + "\n"
+		line := scanner.Text()
+		if line == "" {
+			// 空行表示一个角色的结束，保存当前角色
+			if character != "" {
+				characters = append(characters, character)
+				character = "" // 重置当前角色
+			}
+		} else {
+			// 否则将行追加到当前角色
+			character += line + "\n"
+		}
 	}
+
+	// 将最后一个角色添加到列表
+	if character != "" {
+		characters = append(characters, character)
+	}
+
 	if err := scanner.Err(); err != nil {
-		return "", err
+		return nil, err
 	}
-	return character, nil
+	return characters, nil
 }
 
 // 读取嘲讽
@@ -78,7 +94,7 @@ func listenForQuit() chan bool {
 // 每隔五分钟输出学习进度和嘲讽
 func studyOrDie() {
 	// 读取角色和话语
-	character, err := readCharacter()
+	characters, err := readCharacters()
 	if err != nil {
 		fmt.Println("Error reading character: ", err)
 		return
@@ -90,7 +106,7 @@ func studyOrDie() {
 	}
 
 	// 每隔一段时间输出进度
-	duration := 5 * time.Second
+	duration := 10 * time.Second
 	ticker := time.NewTicker(duration)
 
 	quitCh := listenForQuit()
@@ -99,11 +115,21 @@ func studyOrDie() {
 	//	quote := quotes[rand.Intn(len(quotes))]
 	// charaSay(quote, character)
 	// }
+
+	// 两个计数器：一个控制角色，一个控制语录
+	charIndex := 0
+	quoteIndex := 0
 	for {
 		select {
 		case <-ticker.C:
-			quote := quotes[rand.Intn(len(quotes))]
-			charaSay(quote, character)
+			// 每次输出下一个角色和下一个语录
+			currentChar := characters[charIndex%len(characters)]
+			currentQuote := quotes[quoteIndex%len(characters)]
+			charaSay(currentQuote, currentChar)
+
+			// 递增 （环状）
+			charIndex++
+			quoteIndex++
 		case <-quitCh:
 			fmt.Println("Exiting study-or-die... Good luck!")
 			return
