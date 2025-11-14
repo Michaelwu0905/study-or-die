@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -41,6 +42,10 @@ func readCharacters() ([]string, error) {
 	if err := scanner.Err(); err != nil {
 		return nil, err
 	}
+
+	if len(characters) == 0 {
+		return nil, fmt.Errorf("characters not found")
+	}
 	return characters, nil
 }
 
@@ -55,11 +60,17 @@ func readQuotes() ([]string, error) {
 	var quotes []string
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		quotes = append(quotes, scanner.Text())
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" {
+			quotes = append(quotes, line)
+		}
 	}
 
 	if err = scanner.Err(); err != nil {
 		return nil, err
+	}
+	if len(quotes) == 0 {
+		return nil, fmt.Errorf("quotes not found")
 	}
 
 	return quotes, nil
@@ -67,23 +78,35 @@ func readQuotes() ([]string, error) {
 
 // 输出带有ASCII艺术的文本
 func charaSay(text, character string) {
-	fmt.Println(character)
-	fmt.Printf("  %s  \n", strings.Repeat("=", len(text)+4))
-	fmt.Printf("  < %s >\n", text)
-	fmt.Printf("  %s  \n", strings.Repeat("=", len(text)+4))
+	// fmt.Println(character)
+	// fmt.Printf("  %s  \n", strings.Repeat("=", len(text)+4))
+	// fmt.Printf("  < %s >\n", text)
+	// fmt.Printf("  %s  \n", strings.Repeat("=", len(text)+4))
+	// 生成简单对话框
+	width := len([]rune(text))
+	border := strings.Repeat("-", width+4)
+
+	fmt.Println(border)
+	fmt.Printf("| %s\n", text)
+	fmt.Println(border)
+	fmt.Print(character)
+	fmt.Println()
 }
 
 // 监听用户输入
-func listenForQuit() chan bool {
-	ch := make(chan bool)
+func listenForQuit() <-chan struct{} {
+	ch := make(chan struct{})
 
 	go func() {
 		reader := bufio.NewReader(os.Stdin)
+		fmt.Println("Press 'q' and Enter to quit at any time.")
 		for {
-			fmt.Print("Press 'q' to quit:\n")
-			input, _ := reader.ReadString('\n')
+			input, err := reader.ReadString('\n')
+			if err != nil {
+				return
+			}
 			if strings.TrimSpace(input) == "q" {
-				ch <- true
+				ch <- struct{}{}
 				return
 			}
 		}
@@ -92,7 +115,7 @@ func listenForQuit() chan bool {
 }
 
 // 每隔五分钟输出学习进度和嘲讽
-func studyOrDie() {
+func studyOrDie(totalDuration time.Duration, freq time.Duration) {
 	// 读取角色和话语
 	characters, err := readCharacters()
 	if err != nil {
@@ -105,17 +128,17 @@ func studyOrDie() {
 		return
 	}
 
-	// 每隔一段时间输出进度
-	duration := 10 * time.Second
-	ticker := time.NewTicker(duration)
-
-	quitCh := listenForQuit()
-
+	// 定时器：整体运行时间
+	timer := time.NewTimer(totalDuration)
 	//	for range ticker.C {
 	//	quote := quotes[rand.Intn(len(quotes))]
 	// charaSay(quote, character)
-	// }
 
+	ticker := time.NewTicker(freq)
+	defer ticker.Stop()
+	defer timer.Stop()
+
+	quitCh := listenForQuit()
 	// 两个计数器：一个控制角色，一个控制语录
 	charIndex := 0
 	quoteIndex := 0
@@ -130,6 +153,9 @@ func studyOrDie() {
 			// 递增 （环状）
 			charIndex++
 			quoteIndex++
+		case <-timer.C:
+			fmt.Println("Time is up! Exiting study-or-die... Have a good day :)")
+			return
 		case <-quitCh:
 			fmt.Println("Exiting study-or-die... Good luck!")
 			return
@@ -140,8 +166,23 @@ func studyOrDie() {
 func main() {
 	// 初始化随机种子
 	// rand.Seed(time.Now().Unix())
+	// -t 总时长（分钟）-f 发送频率（秒）
+	minutes := flag.Int("t", 5, "total run time in minutes")
+	seconds := flag.Int("f", 60, "message frequency in seconds")
+	flag.Parse()
+
+	if *minutes <= 0 {
+		fmt.Println("Invalid -t value, using default 5 minutes")
+	}
+	if *seconds <= 0 {
+		fmt.Println("Invalid -f value, using default 60 seconds:")
+		*seconds = 60
+	}
+	totalDuration := time.Duration(*minutes) * time.Minute
+	freq := time.Duration(*seconds) * time.Second
+
+	fmt.Printf("Running study-or-die for %d minutes, every %d seconds...\n", *minutes, *seconds)
 
 	// 开始执行study-or-die函数
-	fmt.Println("Starting study-or-die... Stay focused!")
-	studyOrDie()
+	studyOrDie(totalDuration, freq)
 }
